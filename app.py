@@ -22,6 +22,7 @@ st.set_page_config(
 # -----------------------------
 MODEL_PATH = Path("runs/detect/train-2/weights/best.pt")
 SUPPORTED_IMAGE_TYPES = ["jpg", "jpeg", "png"]
+DEFAULT_CONFIDENCE = 0.25
 
 # -----------------------------
 # STYLES
@@ -114,8 +115,7 @@ def create_download_bytes(image: Image.Image, fmt: str = "JPEG") -> bytes:
 st.markdown(
     """
     <div class='main-title'>
-        
-         Brain Tumor Detection System
+        🧠 Brain Tumor Detection System
     </div>
     """,
     unsafe_allow_html=True,
@@ -148,6 +148,18 @@ st.sidebar.info(
     """
 )
 
+# Confidence threshold slider — lets you adjust sensitivity live,
+# useful for images that don't match the training data perfectly.
+confidence_threshold = st.sidebar.slider(
+    "Detection Confidence Threshold",
+    min_value=0.05,
+    max_value=0.95,
+    value=DEFAULT_CONFIDENCE,
+    step=0.05,
+    help="Lower this if the model is missing tumors on new/external images. "
+         "Higher values reduce false positives.",
+)
+
 st.sidebar.success("Model ready to use")
 
 # -----------------------------
@@ -173,6 +185,9 @@ if uploaded_file is None:
     st.info("Upload a brain MRI image to begin tumor detection.")
     st.stop()
 
+# Always convert to RGB — handles RGBA (transparency), grayscale, or any
+# other mode so the model always receives the same 3-channel format it
+# was trained on, regardless of the image's original source.
 original_image = Image.open(uploaded_file).convert("RGB")
 
 col1, col2 = st.columns([1, 1])
@@ -182,7 +197,7 @@ with col1:
     st.image(original_image, use_column_width=True)
 
 with col2:
-    st.subheader(" Image Details")
+    st.subheader("Image Details")
     st.markdown(f"**Filename:** {uploaded_file.name}")
     st.markdown(f"**Format:** {original_image.format}")
     st.markdown(f"**Dimensions:** {original_image.width} x {original_image.height} px")
@@ -193,12 +208,12 @@ with col2:
 
 device = get_device()
 
-with st.spinner(" Detecting brain tumor..."):
+with st.spinner("Detecting brain tumor..."):
     with tempfile.NamedTemporaryFile(suffix=f".{uploaded_file.name.split('.')[-1]}", delete=False) as temp_file:
         original_image.save(temp_file.name)
         results = model.predict(
             source=temp_file.name,
-            conf=0.25,
+            conf=confidence_threshold,
             device=device,
         )
 
@@ -224,7 +239,10 @@ with col2:
 
     if len(results[0].boxes) == 0:
         st.success("No brain tumor detected")
-        st.info("The model did not find any suspicious regions in the uploaded image.")
+        st.info(
+            "The model did not find any suspicious regions at the current "
+            "confidence threshold. Try lowering the slider in the sidebar."
+        )
     else:
         st.metric("Detected Tumors", len(results[0].boxes))
         st.metric("Highest Confidence", f"{confidence_score * 100:.2f}%")
@@ -267,6 +285,7 @@ st.markdown(
     - Brain Tumor Detection
     - MRI Image Upload
     - YOLOv8 Prediction
+    - Adjustable Confidence Threshold
     - Confidence Score
     - Detection Summary
     - Download Results
